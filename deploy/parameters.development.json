@@ -1,0 +1,6 @@
+{
+    "PORT": "5000",
+    "VERSION": "1.1.0",
+    "SWAGGER_HOST": "localhost:5000",
+    "SWAGGER_SCHEME_PROTOCOL": "http,https"
+}

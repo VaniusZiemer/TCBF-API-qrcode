@@ -1,0 +1,41 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - pip install awscli --upgrade --user
+      - echo Start on `date`
+      - AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - echo ${AWS_ACCOUNT_ID}
+      - REPOSITORY_URI=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}
+      - echo ${REPOSITORY_URI}
+      - COMMIT_HASH=$(echo $CODEBUILD_SOURCE_VERSION | cut -c 91-97)
+      - echo ${COMMIT_HASH}
+      - REPOSITORY_URI_COMMIT=${REPOSITORY_URI}:${CODEBUILD_BUILD_NUMBER}
+      - echo ${REPOSITORY_URI_COMMIT}
+      - REPOSITORY_URI_BRANCH=${REPOSITORY_URI}:${BRANCH_NAME}
+      - echo ${REPOSITORY_URI_BRANCH}
+      - ENVIRONMENT=$(printf '%s\n' "${CONFIG_ENVIRONMENT}")
+      - echo Deploy parameters...
+      - sh ./deploy/parameters.store.sh
+      - echo Print Vars
+      - printenv
+
+  build:
+    commands:
+      #BEGIN DOCKER
+      - echo Build started on `date`
+      - docker build -t ${REPOSITORY_URI_COMMIT} -t ${REPOSITORY_URI_BRANCH} .
+      - echo Logging in to Amazon ECR..
+      - aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
+      - echo Pushing the Docker images...
+      - docker push --all-tags ${REPOSITORY_URI}
+      - echo Scan the Docker images...
+      - aws ecr wait image-scan-complete --repository-name ${ECR_REPOSITORY_NAME} --image-id imageTag=${CODEBUILD_BUILD_NUMBER}
+      - echo Writing image definitions file...
+      - printf '[{"name":"functions-car","imageUri":"%s"}]' $REPOSITORY_URI_COMMIT > imagedefinitions.json
+      - echo "Docker Image Build and Push Execution Finished...`date`"
+  post_build:
+    commands:
+      - echo End on `date`
+artifacts:
+  files: imagedefinitions.json
